@@ -2,6 +2,9 @@
 
 ```Ruby``` é uma linguagem de programação interpretada, multiparadigma e fracamente tipada, desenvolvida em 1995 por Yukihiro Matsumoto. Inicialmente, seu projeto era para se tornar uma linguagem de script. A ídeia era criar uma liguagem mais poderosa que ```Perl``` e com mais orientação a objetos do que ```Python```.
 
+<img align="left" src="https://github.com/DanielVenturini/RubyConcorrent/blob/master/imagens/logo.png">
+
+
 Os mecanismos de concorrência, paralelismo e sincronização em Ruby são diversos e abrangentes; nativamente é provido desde simples ```Mutex``` até os mais variados tipos de ```Threads```, ```Barriers```, ```Poll```, etc. Suas interfaces e operações para programação concorrente e paralelismo se assimilham muito aos do Java. Além dos módulos nativos, pode ser encontrado várias outras implementações de paralelismo/concorrência/sincronização nas ```Gems``` do Ruby, que são implementações fornecidas pela comunidade.
 
 Todos os códigos aqui apresentados foram executados com o ```Ruby 2.5.3```.
@@ -94,7 +97,9 @@ O Ruby - assim como o Python - possúi o GIL - Global Interpreter Lock. Este tem
 
 Sempre que é iniciado um script Ruby, uma instância de um interpretador Ruby é iniciada para analisar o código, construir uma árvore AST e executar o script - felizmente, tudo isso é transparente para o usuário. No entanto, como parte desse tempo de execução, o interpretador também instancia uma instância do GIL [Grigorik 2008]:
 
-![Alt Text](https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/gilvsjruby.jpeg)
+<p align="center">
+	<img src="https://github.com/DanielVenturini/RubyConcorrent/blob/master/imagens/gilvsjruby.jpeg">
+</p>
 
 No Ruby 1.8, uma única thread do SO é alocado para o interpretador Ruby, o GIL é instanciado e as threads Ruby - Threads Verdes, ou seja, que são escalonadas por uma VM ao invés do SO - são armazenados em spool pelo programa. Não há como esse processo Ruby utilizar vários núcleos: existe apenas uma thread do kernel disponível, portanto, apenas um thread Ruby pode ser executado por vez.
 
