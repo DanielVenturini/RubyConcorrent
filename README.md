@@ -7,7 +7,7 @@ Os mecanismos de concorrência, paralelismo e sincronização em Ruby são diver
 Todos os códigos aqui apresentados foram executados com o ```Ruby 2.5.3```.
 
 ## Processos
-Este é o módulo para manipulação de processos do SO. Com este não é possível realizar muitas operações comparando com a class ```Threads``` ou alguma outra. Este não provê concorrência, visto que a memória entre os processos não são compartilhados, mas provê paralelismo.
+Este é o módulo para manipulação de processos do SO. Com este não é possível realizar muitas operações comparando com a class ```Threads```. Este não provê concorrência, visto que a memória entre os processos não são compartilhados, mas provê paralelismo.
 
 Por exemplo, o seguinte código para encontrar um valor em um vetor:
 
@@ -40,6 +40,8 @@ Process.wait
 Usando quatro processos/núcleo, este demorou em ḿédia 0m0.046s de sys para executar.
 
 Entretanto, usar processos para execução paralela não é viável. Tanto por causa da falta de memória compartilhada, quanto pela não provisão de concorrência.
+
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/process.rb
 
 ## Threads
 O módulo mais básico para paralelismo em Ruby é o módulo ```Thread```. Uma thread pode ser criada APENAS chamando a função ```Thread.new```, que dispara uma thread:
@@ -87,9 +89,52 @@ threads.each {
 ```
 
 
+## GIL vs JRuby - Condições de Corrida
+O Ruby - assim como o Python - possúi o GIL - Global Interpreter Lock. Este tem por função fazer com que um determinado processo possua apenas uma Thread em execução em um determinado instante. Ou seja, o GIL provê exclusão mutua entre as threads. Isso significa que se um processo Ruby tiver, por exemplo, dez threads, somente uma estará em execução. Esta é a desvantagem do GIL, pois limita o paralelismo, mas provê a concorrência, pois os objetos compartilhados entre as threads serão acessados somente por uma thread por vez.
 
+Sempre que é iniciado um script Ruby, uma instância de um interpretador Ruby é iniciada para analisar o código, construir uma árvore AST e executar o script - felizmente, tudo isso é transparente para o usuário. No entanto, como parte desse tempo de execução, o interpretador também instancia uma instância do GIL [Grigorik 2008]:
 
+![Alt Text](https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/gilvsjruby.jpeg)
 
+No Ruby 1.8, uma única thread do SO é alocado para o interpretador Ruby, o GIL é instanciado e as threads Ruby - Threads Verdes, ou seja, que são escalonadas por uma VM ao invés do SO - são armazenados em spool pelo programa. Não há como esse processo Ruby utilizar vários núcleos: existe apenas uma thread do kernel disponível, portanto, apenas um thread Ruby pode ser executado por vez.
+
+O Ruby 1.9 tem muitas threads nativas anexados ao interpretador Ruby, mas agora o GIL é o gargalo. O intérprete é protegido contra código não-thread-safe, permitindo apenas que uma thread seja executado por vez. Efeito final: O processo Ruby MRI, ou qualquer outra linguagem que tenha um GIL (o Python, por exemplo, tem um modelo de encadeamento muito semelhante ao Ruby 1.9), nunca tirará vantagem de múltiplos núcleos!
+
+O JRuby é a única implementação Ruby que permitirá dimensionar nativamente o código Ruby em vários núcleos. Ao compilar Ruby para bytecode e executá-lo na JVM, as threads Ruby são mapeados para threads do SO sem um GIL no meio.
+
+Para entender melhor os efeitos, o seguinte código não-thread-safe é executado por apenas uma thread e transformado em thread-safe pelo GIL:
+
+```ruby
+count = 0
+while count < 100 do
+
+	soma = 0
+	threads = []
+
+	2.times {
+		threads << Thread.new {
+			(1..1000).each do |num|		# loop #1
+				soma += num
+			end
+		}
+	}
+
+	threads.each {
+		|thr| thr.join
+	}
+
+	count += 1
+	puts "Resultado: #{soma}"
+end
+```
+
+Como resultado do código acima, se executado com o Ruby, o resultado sempre será ```1001000```, pois somente uma thread executará por vez. Já se for executado com o JRuby, o resultado irá variar em algumas vezes, pois o JRuby não garante que o código seja executado em modo thread-safe.
+
+Há também quem diga que o GIL não provê um código thread-safe [Storimer 2013].
 
 ## Referências
-exAspArk. MEDIUM. Introduction to Concurrency Models with Ruby. Part I. Acessado em 02/11/2018. Disponível em https://engineering.universe.com/introduction-to-concurrency-models-with-ruby-part-i-550d0dbb970
+exAspArk. MEDIUM. Introduction to Concurrency Models with Ruby. Part I. Acessado em 02/12/2018. Disponível em https://engineering.universe.com/introduction-to-concurrency-models-with-ruby-part-i-550d0dbb970
+
+Storimer J. RUBYINSIDE. Does the GIL Make Your Ruby Code Thread-Safe?. Acessado em 02/12/2018. Disponível em http://www.rubyinside.com/does-the-gil-make-your-ruby-code-thread-safe-6051.html
+
+Grigorik I. IGVITA. Parallelism is a Myth in Ruby. Acessado em 02/12/2018. Disponível em https://www.igvita.com/2008/11/13/concurrency-is-a-myth-in-ruby/
