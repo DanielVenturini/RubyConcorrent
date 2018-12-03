@@ -4,7 +4,7 @@
 
 ```Ruby``` é uma linguagem de programação interpretada, multiparadigma e fracamente tipada, desenvolvida em 1995 por Yukihiro Matsumoto. Inicialmente, seu projeto era para se tornar uma linguagem de script. A ídeia era criar uma liguagem mais poderosa que ```Perl``` e com mais orientação a objetos do que ```Python```.
 
-Os mecanismos de concorrência, paralelismo e sincronização em Ruby são diversos e abrangentes; nativamente é provido desde simples ```Mutex``` até os mais variados tipos de ```Threads```, ```Barriers```, ```Poll```, etc. Suas interfaces e operações para programação concorrente e paralelismo se assimilham muito aos do Java. Além dos módulos nativos, pode ser encontrado várias outras implementações de paralelismo/concorrência/sincronização nas ```Gems``` do Ruby, que são implementações fornecidas pela comunidade.
+Os mecanismos de concorrência, paralelismo e sincronização em Ruby naõ são tão diversos; nativamente é provido simples ```Mutex``` e ```Threads```. Outras estruturas mais avançadas como, ```Barriers``` e ```Pool```, pode ser encontrados nas ```Gems``` do Ruby, que são implementações fornecidas pela comunidade.
 
 Todos os códigos aqui apresentados foram executados com o ```Ruby 2.5.3``` e ```JRuby 1.7.22```.
 
@@ -191,7 +191,30 @@ Como resultado do código acima, se executado com o Ruby, o resultado sempre ser
 
 Há também quem diga que o GIL não provê um código thread-safe [Storimer 2013].
 
+### JRuby além do GIL
+Outra grande vantagem de utilizar o ```JRuby``` é que este executa sobre a ```JVM```, permitindo assim interpretar tanto código ```Ruby``` quanto ```Java``` em um mesmo script [Nahum 2012].
+
+A classe ```Semaphore``` não é nativa do ```Ruby```. Porém, pode ser usada a classe que está disponível na ```JVM```:
+
+```ruby
+java_import 'java.util.concurrent.Semaphore'
+permits = 5
+
+SEM = Semaphore.new(permits)
+
+100.times do
+	Thread.new {
+		SEM.acquire
+			puts "Estou na regiao critica com mais #{SEM.availablePermits}"
+			sleep 0.5
+		SEM.release
+		puts "Sai da regiao critica"
+	}
+end
+```
+
 https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/giljruby.rb
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/jruby.rb
 
 ## ThreadGroup
 Quando várias threads são necessárias, uma possibilidade é manter todas em um grupo, para melhor gerência. A classe ```ThreadGroup``` dispôe de uma estrutura que comporta esta operação. Entretanto, uma thread só pode estar em apenas um grupo, assim, se um thread já estiver em outro grupo, esta será removida para ser adicionada no seu novo grupo. 
@@ -284,9 +307,88 @@ end
 
 Agora, executando novamente com o ```jruby```, é provido sincronismo, e duas threads nunca estarão dentro do bloco ```synchronize``` em um determinado instante. E os valores resultantes são consistentes.
 
+Junto com o ```synchronize```, pode ser usado a função ```lock``` e ```unlock```. A função ```lock``` bloqueia o mutex, e a ```unlock``` desbloqueia:
 
-A diferença dos monitores é que eles podem ser uma classe pai da classe corrente [Range 2017].
+```ruby
+def regiaoExclusiva
+	puts "Tentando acessar o synchronize"
+	$mutex.synchronize do
+		puts "Conseguiu entrar no bloco synchronize"
+		sleep 2
+		puts "Saindo do synchronize"
+	end
+end
 
+thr = Thread.new do
+	regiaoExclusiva
+end
+
+if not $mutex.locked?
+	puts "Nao está bloqueada ainda"
+	$mutex.lock
+	puts "Obteve o lock"
+	sleep 2
+	puts "Saindo do lock"
+	$mutex.unlock
+end
+
+thr.join
+```
+A função ```Mutex.locked?``` apenas retorna true ou false para se o mutex já está bloqueado
+
+A classe ```Monitor``` também fornece a exclusão mútua para um região crítica. Sua utilização se dá do mesmo modo que o ```Mutex```:
+
+```ruby
+lock = Monitor.new
+lock.synchronize do
+	# região crítica
+end
+```
+
+A diferença dos monitores é que eles podem ser uma classe pai da classe corrente [Range 2017]. Ou seja, uma classe pode herdar da classe ```Monitor```. Entretanto, a classe ```Monitor``` só possui o método ```synchronize```, por isso não é tão utilizado quando o ```Mutex```, que possui mais métodos.
+
+Ao usar ```Mutex```, pode ser utilizado outra estrutura para auxiliar em alguns problemas: ```ConditionVariable```. Estas, sinalizam quando um recurso está ocupado ou liberado, através de ```wait(mutex)``` e ```signal``` [Rangel 2017]:
+
+```ruby
+items = []
+lock = Mutex.new
+cond = ConditionVariable.new
+limit = 0
+
+produtor = Thread.new do
+	loop do
+		lock.synchronize do
+			qtde = rand(50)
+			next if qtde == 0
+
+			puts "produzindo #{qtde} item(s)"
+			items = Array.new(qtde,"item")
+			cond.wait(lock)
+			puts "consumo efetuado!"
+			puts "-" * 25
+			limit += 1
+		end
+		break if limit > 5
+	end
+end
+
+consumidor = Thread.new do
+	loop do
+		lock.synchronize do
+			if items.length>0
+				puts "consumindo #{items.length} item(s)"
+				items = []
+			end
+
+		cond.signal		# se fosse vários produtores: cond.broadcast
+		end
+	end
+end
+
+produtor.join
+```
+
+O produtor produz os items, avisa o consumidor que está tudo ok, o consumidor consome os items e sinaliza para o produtor que pode enviar mais.
 
 ## Referências
 
@@ -299,3 +401,5 @@ Storimer J. RUBYINSIDE. Does the GIL Make Your Ruby Code Thread-Safe?. Acessado 
 Grigorik I. IGVITA. Parallelism is a Myth in Ruby. Acessado em 02/12/2018. Disponível em https://www.igvita.com/2008/11/13/concurrency-is-a-myth-in-ruby/
 
 Rangel E. Conhecendo Ruby. Aprenda de Forma Prática e Divertida. Leanpub, 2017.
+
+Nahum D. PARACODE. Pragmatic Concorrency With Ruby. Acessado em 03/12/2018. Disponível em http://blog.paracode.com/2012/09/07/pragmatic-concurrency-with-ruby/
