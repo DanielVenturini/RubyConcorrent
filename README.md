@@ -1,9 +1,8 @@
 # Programação Concorrente em Ruby
 
-```Ruby``` é uma linguagem de programação interpretada, multiparadigma e fracamente tipada, desenvolvida em 1995 por Yukihiro Matsumoto. Inicialmente, seu projeto era para se tornar uma linguagem de script. A ídeia era criar uma liguagem mais poderosa que ```Perl``` e com mais orientação a objetos do que ```Python```.
-
 <img align="left" src="https://github.com/DanielVenturini/RubyConcorrent/blob/master/imagens/logo.png">
 
+```Ruby``` é uma linguagem de programação interpretada, multiparadigma e fracamente tipada, desenvolvida em 1995 por Yukihiro Matsumoto. Inicialmente, seu projeto era para se tornar uma linguagem de script. A ídeia era criar uma liguagem mais poderosa que ```Perl``` e com mais orientação a objetos do que ```Python```.
 
 Os mecanismos de concorrência, paralelismo e sincronização em Ruby são diversos e abrangentes; nativamente é provido desde simples ```Mutex``` até os mais variados tipos de ```Threads```, ```Barriers```, ```Poll```, etc. Suas interfaces e operações para programação concorrente e paralelismo se assimilham muito aos do Java. Além dos módulos nativos, pode ser encontrado várias outras implementações de paralelismo/concorrência/sincronização nas ```Gems``` do Ruby, que são implementações fornecidas pela comunidade.
 
@@ -91,6 +90,61 @@ threads.each {
 }
 ```
 
+Para classes, o processo não é nem um pouco parecido com o do Java. Como a classe Thread possui um método chamado ```start```, é natural pensar que se inicia um classe com thread chamando o método ```start```. Porém, a herança em Ruby para a classe Thread não funciona como o esperado. Para conseguir executar um objeto com thread, é necessário realizar a mesma operação que nos exemplos passados:
+
+```ruby
+class Despertador
+	def initialize horario, nome
+		@horario = horario
+		@nome = nome
+	end
+
+	def nome
+		@nome
+	end
+
+	def start outro_despertador
+		Thread.new {
+			puts "#{@nome} Esperando dar a hora..."
+			sleep(@horario)
+			puts "#{@nome} despertando.............."
+			puts "Desligando despertador #{outro_despertador.nome}"
+
+			exit
+			outro_despertador.kill
+		}
+	end
+end
+
+puts "Ligando os despertadores..."
+
+t1 = Despertador.new(3, 'Roseta')
+t2 = Despertador.new(5, 'Tomar')
+
+t1 = t1.start t2
+t2 = t2.start t1
+
+puts "Despertadores ligados!"
+t1.join
+t2.join
+```
+
+Também, a classe ```Thread``` possúi outros atributos interessantes:
+
+```ruby
+Thread.exit 		# marca a thread para sair da execução. Se já foi marcada, sai imediatamente.
+Thread.kill 		# termina a thread imediatamente.
+Thread.alive?		# boleano representando se a thread está 'viva'
+Thread.backtrace	# retorna o backtrace da thread
+Thread.priority 	# prioridade da thread. As threads de maior prioridade será executado com mais frequencia do que threads de menor prioridade.
+Thread.stop			# coloca a thread para o estado 'sleep'
+Thread.run 			# coloca em execução uma thread que está no estado 'sleep'
+Thread.status		# mostra o estado atual da thread: 'sleep', 'run', 'aborting', 'false', 'nil'
+```
+
+Pode ser necessária o uso da função ```Thread.current.#{def}```.
+
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/thread.rb
 
 ## GIL vs JRuby - Condições de Corrida
 O Ruby - assim como o Python - possúi o GIL - Global Interpreter Lock. Este tem por função fazer com que um determinado processo possua apenas uma Thread em execução em um determinado instante. Ou seja, o GIL provê exclusão mutua entre as threads. Isso significa que se um processo Ruby tiver, por exemplo, dez threads, somente uma estará em execução. Esta é a desvantagem do GIL, pois limita o paralelismo, mas provê a concorrência, pois os objetos compartilhados entre as threads serão acessados somente por uma thread por vez.
@@ -137,7 +191,12 @@ Como resultado do código acima, se executado com o Ruby, o resultado sempre ser
 
 Há também quem diga que o GIL não provê um código thread-safe [Storimer 2013].
 
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/giljruby.rb
+
 ## Referências
+
+RUBY-DOC. Class: Thread (Ruby 2.5.3). Acessado em 18/11/2018. Disponível em https://ruby-doc.org/core-2.5.3/Thread.html
+
 exAspArk. MEDIUM. Introduction to Concurrency Models with Ruby. Part I. Acessado em 02/12/2018. Disponível em https://engineering.universe.com/introduction-to-concurrency-models-with-ruby-part-i-550d0dbb970
 
 Storimer J. RUBYINSIDE. Does the GIL Make Your Ruby Code Thread-Safe?. Acessado em 02/12/2018. Disponível em http://www.rubyinside.com/does-the-gil-make-your-ruby-code-thread-safe-6051.html
