@@ -6,7 +6,7 @@
 
 Os mecanismos de concorrência, paralelismo e sincronização em Ruby são diversos e abrangentes; nativamente é provido desde simples ```Mutex``` até os mais variados tipos de ```Threads```, ```Barriers```, ```Poll```, etc. Suas interfaces e operações para programação concorrente e paralelismo se assimilham muito aos do Java. Além dos módulos nativos, pode ser encontrado várias outras implementações de paralelismo/concorrência/sincronização nas ```Gems``` do Ruby, que são implementações fornecidas pela comunidade.
 
-Todos os códigos aqui apresentados foram executados com o ```Ruby 2.5.3```.
+Todos os códigos aqui apresentados foram executados com o ```Ruby 2.5.3``` e ```JRuby 1.7.22```.
 
 ## Processos
 Este é o módulo para manipulação de processos do SO. Com este não é possível realizar muitas operações comparando com a class ```Threads```. Este não provê concorrência, visto que a memória entre os processos não são compartilhados, mas provê paralelismo.
@@ -193,6 +193,101 @@ Há também quem diga que o GIL não provê um código thread-safe [Storimer 201
 
 https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/giljruby.rb
 
+## ThreadGroup
+Quando várias threads são necessárias, uma possibilidade é manter todas em um grupo, para melhor gerência. A classe ```ThreadGroup``` dispôe de uma estrutura que comporta esta operação. Entretanto, uma thread só pode estar em apenas um grupo, assim, se um thread já estiver em outro grupo, esta será removida para ser adicionada no seu novo grupo. 
+
+Quando uma thread é criada a partir de uma outra, a primeira será adicionada implicitamente no mesmo grupo.
+
+```ruby
+tg = ThreadGroup.new
+
+t1 = Thread.new {
+	puts "Thread1 #{Thread.current.group}"
+}
+
+t2 = Thread.new {
+	puts "Thread2 #{Thread.current.group}"
+}
+
+t3 = Thread.new {
+	puts "Thread3 #{Thread.current.group}"
+}
+
+tg.add t1
+tg.add t2
+tg.add t3
+```
+
+Uma thread é adicionada ao grupo pela função ```add```ou explicitamente. Também, uma operação de "trava" pode ser usada no grupo, impedindo que outras threads possam ser adicionadas explicitamentes no grupo:
+
+```ruby
+tg.enclose
+```
+
+A partir desta linha de código, nenhuma thread pode ser adicionada no grupo. Nem mesmo as threads que são criadas a partir de threads daquele grupo.
+
+A última operação disponível para o grupo de threads é a de retornar a lista de threads que estão neste grupo:
+```ruby
+ThreadGroup::Default.list
+```
+
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/threadgroup.rb
+
+## Mutex e Monitor
+Assim como nas demais linguagens que contém mecanismos de concorrências, o Ruby contém a classe ```Mutex```, que implementa um semáforo simples que pode ser usado para cordenar o acesso a dados compartilhados por múltiplas threads.
+
+Um ```Mutex``` é criado chamando a função ```Mutex.new``` e todo a região critica é escrita dentro do bloco ```synchronize```, onde é provido exclusão mútua.
+
+Um exemplo de região compartilhada é o seguinte trecho de código:
+
+```ruby
+$var1 = 0
+$var2 = 0
+
+def somaDecrementa
+	# regiao critica
+	$var1 += 1
+	$var2 -= 1
+end
+
+threads = []
+10_000.times do
+	threads << Thread.new {
+		somaDecrementa
+	}
+end
+
+threads.each { |thread|
+	thread.join
+}
+
+puts "Var1: #{$var1}"
+puts "Var2: #{$var2}"
+```
+Este código apenas atribui e decrementa nas variáveis globais ```var1``` e ```var2```. Executando com o ```ruby```, não haverá nenhum problema com a região crítica, visto que o GIL não permitirá mais de uma thread executando ao mesmo tempo. Porém, ao executar com o ```jruby```, o resultado é indefinido, pois as threads podem realizar a troca de contexto dentro da região crítica, assim ficando com valores incoerrentes.
+
+Para resolver este problema, a região crítica pode ser inserida dentro de um bloco ```synchronize```, realizando assim, a exclusão mútua.
+
+Então o código anterior que gera inconsistência - a função de região crítica -, é reescrito da seguinte maneira:
+
+```ruby
+$mutex = Mutex.new
+
+def somaDecrementa
+	$mutex.synchronize {
+		# regiao critica com exclusão mútua
+		$var1 += 1
+		$var2 -= 1
+	}
+end
+```
+
+Agora, executando novamente com o ```jruby```, é provido sincronismo, e duas threads nunca estarão dentro do bloco ```synchronize``` em um determinado instante. E os valores resultantes são consistentes.
+
+
+A diferença dos monitores é que eles podem ser uma classe pai da classe corrente [Range 2017].
+
+
 ## Referências
 
 RUBY-DOC. Class: Thread (Ruby 2.5.3). Acessado em 18/11/2018. Disponível em https://ruby-doc.org/core-2.5.3/Thread.html
@@ -202,3 +297,5 @@ exAspArk. MEDIUM. Introduction to Concurrency Models with Ruby. Part I. Acessado
 Storimer J. RUBYINSIDE. Does the GIL Make Your Ruby Code Thread-Safe?. Acessado em 02/12/2018. Disponível em http://www.rubyinside.com/does-the-gil-make-your-ruby-code-thread-safe-6051.html
 
 Grigorik I. IGVITA. Parallelism is a Myth in Ruby. Acessado em 02/12/2018. Disponível em https://www.igvita.com/2008/11/13/concurrency-is-a-myth-in-ruby/
+
+Rangel E. Conhecendo Ruby. Aprenda de Forma Prática e Divertida. Leanpub, 2017.
