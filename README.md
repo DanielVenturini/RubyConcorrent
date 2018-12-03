@@ -191,6 +191,8 @@ Como resultado do código acima, se executado com o Ruby, o resultado sempre ser
 
 Há também quem diga que o GIL não provê um código thread-safe [Storimer 2013].
 
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/giljruby.rb
+
 ### JRuby além do GIL
 Outra grande vantagem de utilizar o ```JRuby``` é que este executa sobre a ```JVM```, permitindo assim interpretar tanto código ```Ruby``` quanto ```Java``` em um mesmo script [Nahum 2012].
 
@@ -213,7 +215,6 @@ SEM = Semaphore.new(permits)
 end
 ```
 
-https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/giljruby.rb
 https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/jruby.rb
 
 ## ThreadGroup
@@ -390,6 +391,144 @@ produtor.join
 
 O produtor produz os items, avisa o consumidor que está tudo ok, o consumidor consome os items e sinaliza para o produtor que pode enviar mais.
 
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/synchronize.rb
+
+## Concorrent-Ruby
+A principal ```Gem``` disponível para programação concorrente em ```Ruby```. Com quase 100M de download, é uma ferramenta moderna de concorrência que inclui ```Agents```, ```Futures```, ```Promises```, ```ThreadPools```, ```Actors```, ```Supervisors``` e muito mais. É inspirado em ```Erlang```, ```Clojure```, ```Go```, ```JavaScript```, ```actors``` e padrões clássicos de concorrência.
+
+Para instalar esta gem, basta executar o comando:
+
+```bash
+gem install concurrent-ruby -v 1.0.5
+```
+
+Após esta operação, todos os módulos estão disponíveis para importar e usar no script.
+
+Os exemplos abaixos são executados no ```JRuby```, pois o GIL por sí só já resolveria os problemas para os quais estas estruturas são úteis.
+
+### AtomicFixnum
+Um valor numérico que pode ser atualizado atomicamente. Leitura e escrita para um número atomico é thread-safe e é garantido que ocorrerá com sucesso. Leitura e escrita pode bloquear a thread.
+
+```ruby
+soma = AtomicFixnum.new(0)
+threads = []
+
+2.times {
+	threads << Thread.new {
+		(1..1000).each do |num|
+			soma.set soma.get + num
+		end
+	}
+}
+
+threads.each {
+	|thr| thr.join
+}
+
+count += 1
+puts "Resultado: #{soma}"
+```
+
+Com isto, é possível resolver o problema que foi demonstrado no exemplo do ```JRuby```. Como a operação ```set``` e ```get``` e as demais operações do ```AtomicFIxnum``` são atomicas, a variável não sofre os impactos da concorrência. Entretando, esta operação gera bloqueio implícito nas threads.
+
+### ThreadLocalVar
+Uma ```ThreadLocalVar``` é uma variavel compartilhada que tem um valor diferente para cada thread. Cada variavel pode ter um valor padrão, mas quando a variável é modificada, esta alteração fica visível somente para a thread que a realizou:
+
+```ruby
+threads = []
+v = ThreadLocalVar.new(14)
+puts "Valor na principal: #{v.value}"
+
+10.times do |time|
+	threads << Thread.new do
+		puts "Thread #{time} antes de alterar: #{v.value}"
+		v.value = rand(10)
+		puts "Thread #{time} alterou: #{v.value}"
+	end
+end
+
+threads.each do |thread|
+	thread.join
+end
+
+puts "Valor na principal: #{v.value}"
+```
+
+Em cada uma das threads é alterada o valor da variável ```v```. Entretanto, esta alteração é aplicada somente para a thread que realizou. As demais threads continuam com o valor padrão ou com o seu valor alterado.
+
+### CyclicBarrier
+Barreira é uma das principais estruturas para sincronização de threads. É uma operação bloqueante que opera sobre todas as threads. Quando a última thread chegar na barreira, todas as threads são liberadas. No construtor da barreira, é passado a quantidade de threads que a barreira irá bloquear. Se o valor for maior que a quantidade de threads, o programa entrará em ```deadlock```, pois a barreira jamais irá liberar.
+
+```ruby
+threads = []
+lista = []
+barreira = CyclicBarrier.new(10)
+
+10.times do |time|
+	threads << Thread.new do
+		lista << rand(10)
+		puts "Thread #{time} vai esperar as demais"
+		barreira.wait
+
+		lista[time] = (lista[(time-1)%10] + lista[(time+1)%10])
+		puts "Thread #{time} esperando denovo"
+		barreira.wait
+
+		lista[time] -= (lista[(time-1)%10] - lista[(time+1)%10])
+	end
+end
+
+threads.each do |thread|
+	thread.join
+end
+
+puts "Valor final #{lista}"
+```
+
+Basicamente, cada thread adiciona um valor para a lista e permanece na barreira esperando as demais. Quando todas adicionam um valor, a thread soma o valor na posição anterior e na posição posterior à sua. Tecnicamente, nenhum erro por falta de valor irá acontecer, visto que todas as threads adicionaram um valor a lista. Então todas, novamente, aguardam na barreira para realizar uma operação.
+
+### Exchanger
+A classe ```Exchanger``` é um tanto quanto curiosa. Esta serve apenas para trocar um objeto entre duas threads em um determinado ponto.
+
+```ruby
+threads = []
+exchanger = Exchanger.new
+
+threads << Thread.new do
+	nome = "Thread A"
+	recebido = exchanger.exchange nome
+	puts "#{nome} recebeu #{recebido}"
+end
+
+threads << Thread.new do
+	nome = "Thread B"
+	recebido = exchanger.exchange nome
+	puts "#{nome} recebeu #{recebido}"
+end
+
+threads.each do |thread|
+	thread.join
+end
+```
+
+A thread ```A``` envia seu nome no ```exchanger``` e bloqueia enquanto não recebe um objeto. Mesmo caso ocorre com a thread ```B```, mas esta já terá recebido algo da outra thread. Então, quando o objeto chega, as threads são liberadas para continuar.
+
+### Promise
+```Promise``` é uma estrutura baseada no ```Promise``` do ```JavaScript```. Um ```Promise``` representa o valor de um evento retornado da conclusão de uma operação. O seu principal método é o ```.then```, que permite o encadeamento de operações.
+
+```ruby
+p = Promise.fulfill(20).
+    then{|result| puts "#{result-10}"; result-10 }.
+    then{|result| puts "#{result*3}"; result*3 }.
+    then{|result| puts "#{result%5}"; result % 5 }.execute
+
+sleep 0.2
+```
+
+A função ```fulfill``` recebe o valor inicial que é passado para o primeiro ```then```. Ao final da execução do ```then```, este retorna um valor que é passado para o próximo e assim por diante.
+
+https://github.com/DanielVenturini/RubyConcorrent/blob/master/exemplos/concurrent.rb
+
 ## Referências
 
 RUBY-DOC. Class: Thread (Ruby 2.5.3). Acessado em 18/11/2018. Disponível em https://ruby-doc.org/core-2.5.3/Thread.html
@@ -403,3 +542,5 @@ Grigorik I. IGVITA. Parallelism is a Myth in Ruby. Acessado em 02/12/2018. Dispo
 Rangel E. Conhecendo Ruby. Aprenda de Forma Prática e Divertida. Leanpub, 2017.
 
 Nahum D. PARACODE. Pragmatic Concorrency With Ruby. Acessado em 03/12/2018. Disponível em http://blog.paracode.com/2012/09/07/pragmatic-concurrency-with-ruby/
+
+Kaffenberger R. ROSSTA. Thread Pool - A Ruby Antihero. Acessado em 03/12/2018. Disponível em https://rossta.net/blog/a-ruby-antihero-thread-pool.html

@@ -2,6 +2,17 @@ require 'java'
 
 java_import 'java.util.concurrent.Semaphore'
 
-SEM = Semaphore.new(4)
-SEM.acquire #To decrement the number available
-SEM.release #To increment the number available
+java_import 'java.util.concurrent.Semaphore'
+permits = 5
+
+SEM = Semaphore.new(permits)
+
+100.times do
+	Thread.new {
+		SEM.acquire
+			puts "Estou na regiao critica com mais #{SEM.availablePermits}"
+			sleep 0.5
+		SEM.release
+		puts "Sai da regiao critica"
+	}
+end
